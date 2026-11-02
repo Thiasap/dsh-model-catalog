@@ -286,6 +286,26 @@ function newModel(meta, config, template) {
   return model;
 }
 
+/**
+ * 模型 id 比较：自然序（数字段按数值，`x4.9` 排在 `x4.10` 前面），
+ * 大小写与标点不参与主要比较，完全相同的字符串再按码点定序，保证结果稳定。
+ */
+function compareModelId(left, right) {
+  const a = String(left ?? '');
+  const b = String(right ?? '');
+  const hint = a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' });
+  if (hint !== 0) return hint;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** 写进模型组的顺序一律按 id 排序：每次同步都覆盖模型组里原有的顺序。 */
+function sortModelsById(models) {
+  return models
+    .map((model, index) => ({ model, index }))
+    .sort((left, right) => compareModelId(left.model?.id, right.model?.id) || left.index - right.index)
+    .map((item) => item.model);
+}
+
 function buildNextConfig(base, config, state, catalog, forceModelId) {
   if (!config.provider) throw new Error('还没有选择模型组');
   if (!config.baseURL) throw new Error('还没有填写接口地址');
@@ -354,18 +374,27 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
     added += 1;
   }
 
-  providers[config.provider] = { ...profile, models };
+  // 同步后的顺序按 id 排序，覆盖模型组里原有的顺序（各端结果一致）。
+  const ordered = sortModelsById(models);
+  const previousIds = existing
+    .filter((model) => model && typeof model.id === 'string')
+    .map((model) => model.id);
+  const reordered = ordered.length === previousIds.length
+    && ordered.some((model, index) => model.id !== previousIds[index]);
+
+  providers[config.provider] = { ...profile, models: ordered };
   return {
     next: { ...(base || {}), providers },
     summary: {
       provider: config.provider,
       created: !existingProfile,
       template: config.nameTemplate,
-      total: models.length,
+      total: ordered.length,
       matched: seen.size,
       added,
       removed,
-      changed: changed + added + removed,
+      reordered,
+      changed: changed + added + removed + (reordered ? 1 : 0),
     },
   };
 }
@@ -492,11 +521,14 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
   }
 
   const preview = buildNextConfig(base, config, state, catalog, forceModelId);
+  // summary.changed 是「改了几处」的计数，对外报的 changed 是「有没有写配置」，
+  // 拆开成 updates / changed，避免计数为 0 时被当成没变化。
+  const summary = { ...preview.summary, updates: preview.summary.changed };
   if (isDeepStrictEqual(preview.next, base)) {
-    state.lastSync = { at: Date.now(), reason, changed: false, ...preview.summary };
+    state.lastSync = { ...summary, at: Date.now(), reason, changed: false };
     state.lastError = null;
     await writeState(stateFilePath(), state);
-    return { changed: false, ...preview.summary };
+    return { ...summary, changed: false };
   }
 
   await withHmrRetry(() => ctx.configEditor.edit(entry, (current, inherited) => {
@@ -508,10 +540,10 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
     return buildNextConfig(merged, config, state, catalog, forceModelId).next;
   }));
 
-  state.lastSync = { at: Date.now(), reason, changed: true, ...preview.summary };
+  state.lastSync = { ...summary, at: Date.now(), reason, changed: true };
   state.lastError = null;
   await writeState(stateFilePath(), state);
-  return { changed: true, ...preview.summary };
+  return { ...summary, changed: true };
 }
 
 /**
@@ -573,7 +605,7 @@ async function applySelection(ctx, config, state, importIds, removeIds) {
       kept.push(newModel(meta, config, config.nameTemplate));
       added += 1;
     }
-    return { kept, changed, added };
+    return { kept: sortModelsById(kept), changed, added };
   };
 
   const preview = rebuild(current);

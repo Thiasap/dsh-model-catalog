@@ -16,6 +16,7 @@
   - `name` ← 名称模板（默认 `{prefix}{name} [{credits}]`，例如 `cn:DeepSeek-V4.1-Flash [x0.11]`、`global:GPT-6-Astra [x6.67]`）
   - `reasoningEfforts` ← `reasoning_supported_efforts`
   - 同时同步 `contextWindow`、`maxTokens`、`input`
+  - 模型组里的 `models[]` 顺序统一按模型 id 排序（自然序：`4.9` 在 `4.10` 前面），每次同步都会覆盖原有顺序
 - **模型面板**：多选勾选要保留的模型、搜索、按国内/国际/已导入/已下架筛选、设为默认模型、修改名称模板、刷新目录、同步到 DSH。
 - **入口**：左侧栏「模型目录」图标；以及「设置 → 模型目录」。
 
@@ -34,7 +35,7 @@
 dsh plugin --profile <profile> add github:Thiasap/dsh-model-catalog
 
 # 或装指定版本的 Release 包
-dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.1.1/dsh-model-catalog-1.1.1.tgz
+dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.2.0/dsh-model-catalog-1.2.0.tgz
 
 # 本地目录
 dsh plugin --profile <profile> add /path/to/dsh-model-catalog
@@ -72,6 +73,7 @@ dsh plugin --profile <profile> add /path/to/dsh-model-catalog
 - 点右上角「同步到 DSH」后：勾选项被导入/刷新（名称、上下文、输出、视觉、思考档位），未勾选的目录模型从模型组移除。
 - 云端已下架的旧模型默认保留，并置顶标红提示；取消勾选或点行内「删掉」再同步即可清除。
 - 启动时的自动同步只刷新已存在模型的字段，不会自行增删模型，避免手滑丢配置。
+- 无论手动同步还是启动同步，写进模型组的模型都按 id 排序，DSH 模型选择器里的顺序因此固定下来；面板列表在「已下架 / 已导入 / 可导入」三组内部同样按 id 排序。
 - 「显示名称模板」卡片下方的 **启动 DSH 时自动刷新名称与积分** 勾选框控制这个行为；关掉后启动时不再拉取目录，只保留手动「刷新目录 / 同步到 DSH」。
 - 旧版本升级时，如果状态文件里没有连接字段，会根据已有目录自动匹配包含这些模型 id 的模型组。
 

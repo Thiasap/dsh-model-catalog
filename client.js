@@ -380,6 +380,15 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** 与 Host 侧一致：模型 id 自然序（数字段按数值比较）。 */
+    function compareModelId(left, right) {
+      const a = String(left == null ? '' : left);
+      const b = String(right == null ? '' : right);
+      const hint = a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' });
+      if (hint !== 0) return hint;
+      return a < b ? -1 : a > b ? 1 : 0;
+    }
+
     function formatName(template, model) {
       const tpl = typeof template === 'string' && template.trim() ? template : '{prefix}{name} [{credits}]';
       const text = tpl.replace(/\{([a-zA-Z][\w]*)\}/g, (_, rawKey) => {
@@ -855,10 +864,14 @@ window.__ModuleLoader__.load({
           filter === 'unsynced' || filter === 'cn' || filter === 'global'
             ? []
             : staleModels.filter(match).map((model) => ({ model, stale: true, imported: true }));
-        // 顺序：需处理（已下架）→ 已导入 → 可导入；组内保持接口顺序。
-        const importedRows = catalogRows.filter((row) => row.imported);
-        const otherRows = catalogRows.filter((row) => !row.imported);
-        return [...staleRows, ...importedRows, ...otherRows];
+        // 顺序：需处理（已下架）→ 已导入 → 可导入；组内按模型 id 排序，
+        // 和同步写进 DSH 的顺序保持一致。
+        const orderById = (rows) => rows
+          .slice()
+          .sort((left, right) => compareModelId(left.model.id, right.model.id));
+        const importedRows = orderById(catalogRows.filter((row) => row.imported));
+        const otherRows = orderById(catalogRows.filter((row) => !row.imported));
+        return [...orderById(staleRows), ...importedRows, ...otherRows];
       }, [models, staleModels, staleIds, syncedIds, filter, query]);
 
       const visibleIds = useMemo(() => filtered.map((row) => row.model.id), [filtered]);
