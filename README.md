@@ -8,7 +8,7 @@
 
 ## 功能
 
-- **启动同步**：DSH 启动后自动请求 `GET {baseURL}/models`，按 id 同步到选定模型组。
+- **启动同步**：DSH 启动后自动请求 `GET {baseURL}/models`，按 id 刷新**已导入模型**的 `name`（含最新积分倍率）、思考档位、上下文与输出；不会自行新增或删除模型。面板里可关闭。
 - **连接配置面板**：接口地址、API Key 引用、模型组、显示名称、协议都在面板里配置，源码不内置任何网关地址或密钥。
 - **从已有模型组引入**：下拉选择 `llm-pi-ai` 里已经配置好的模型组，自动带出它的 `baseURL`、`apiKeyEnv`、显示名和协议；也可以新建模型组。
 - **密钥安全**：密钥通过面板写入 DSH 凭据服务，插件状态文件只保存凭据引用名，不保存密钥值。
@@ -34,7 +34,7 @@
 dsh plugin --profile <profile> add github:Thiasap/dsh-model-catalog
 
 # 或装指定版本的 Release 包
-dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.1.0/dsh-model-catalog-1.1.0.tgz
+dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.1.1/dsh-model-catalog-1.1.1.tgz
 
 # 本地目录
 dsh plugin --profile <profile> add /path/to/dsh-model-catalog
@@ -72,6 +72,7 @@ dsh plugin --profile <profile> add /path/to/dsh-model-catalog
 - 点右上角「同步到 DSH」后：勾选项被导入/刷新（名称、上下文、输出、视觉、思考档位），未勾选的目录模型从模型组移除。
 - 云端已下架的旧模型默认保留，并置顶标红提示；取消勾选或点行内「删掉」再同步即可清除。
 - 启动时的自动同步只刷新已存在模型的字段，不会自行增删模型，避免手滑丢配置。
+- 「显示名称模板」卡片下方的 **启动 DSH 时自动刷新名称与积分** 勾选框控制这个行为；关掉后启动时不再拉取目录，只保留手动「刷新目录 / 同步到 DSH」。
 - 旧版本升级时，如果状态文件里没有连接字段，会根据已有目录自动匹配包含这些模型 id 的模型组。
 
 ## 数据与隐私

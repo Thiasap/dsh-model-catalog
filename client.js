@@ -61,6 +61,10 @@ window.__ModuleLoader__.load({
       'panel.template.save': '保存并应用',
       'panel.template.saved': '模板已保存并重新同步',
       'panel.template.preview': '预览：',
+      'panel.startup.title': '启动 DSH 时自动刷新名称与积分',
+      'panel.startup.hint': '每次打开 DSH 拉取一次模型目录，只改写已导入模型的 name、思考档位、上下文与输出，不会新增或删除模型。',
+      'panel.startup.on': '已开启：下次启动 DSH 时自动刷新',
+      'panel.startup.off': '已关闭：启动时不再刷新模型名称',
       'panel.search': '搜索模型、id、描述…',
       'panel.filter.all': '全部',
       'panel.filter.synced': '已导入',
@@ -167,6 +171,10 @@ window.__ModuleLoader__.load({
       'panel.template.save': 'Save & apply',
       'panel.template.saved': 'Template saved and re-synced',
       'panel.template.preview': 'Preview: ',
+      'panel.startup.title': 'Refresh names and credits on DSH startup',
+      'panel.startup.hint': 'Fetches the catalog once per start and rewrites the name, reasoning levels, context and output of models already in the group. It never adds or removes models.',
+      'panel.startup.on': 'On: names refresh on the next DSH start',
+      'panel.startup.off': 'Off: startup no longer refreshes model names',
       'panel.search': 'Search model, id, description…',
       'panel.filter.all': 'All',
       'panel.filter.synced': 'Imported',
@@ -275,6 +283,10 @@ window.__ModuleLoader__.load({
 .mc-input:focus{border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary) 16%,transparent);}
 .mc-preview{margin-top:8px;font-size:11.5px;color:var(--dsw-alias-label-secondary);word-break:break-word;}
 .mc-preview strong{color:var(--dsw-alias-label-primary);font-weight:600;}
+.mc-toggle-row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:13px;padding-top:13px;border-top:1px solid var(--dsw-alias-border-l1);}
+.mc-toggle{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap;}
+.mc-toggle input{width:15px;height:15px;margin:0;accent-color:var(--dsw-alias-brand-primary);cursor:pointer;}
+.mc-toggle-row .mc-note{margin:0;flex:1 1 260px;}
 .mc-banner{border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;line-height:1.5;word-break:break-word;}
 .mc-banner-error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary);border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 26%,transparent);}
 .mc-banner-ok{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent);color:var(--dsw-alias-state-success-primary);border:1px solid color-mix(in srgb,var(--dsw-alias-state-success-primary) 24%,transparent);}
@@ -602,6 +614,8 @@ window.__ModuleLoader__.load({
       const [credential, setCredential] = useState(null);
       const [picked, setPicked] = useState(() => new Set());
       const pickedInitialized = useRef(false);
+      const [startup, setStartup] = useState(true);
+      const startupInitialized = useRef(false);
 
       // 勾选集合 = 「DSH 里应该有的模型」。首次拿到数据时按当前模型组预勾选，
       // 之后由用户自己改；换个模型组或刷新后重新对齐。
@@ -629,6 +643,10 @@ window.__ModuleLoader__.load({
         }
         if (!data) return;
         setCredential(data.credential || null);
+        if (!startupInitialized.current) {
+          startupInitialized.current = true;
+          setStartup(data.settings?.syncOnStartup !== false);
+        }
         if (!connInitialized.current) {
           connInitialized.current = true;
           const settings = data.settings || {};
@@ -911,6 +929,28 @@ window.__ModuleLoader__.load({
           setBusy('');
         }
       }, [models, picked, setData, staleIds, syncedIds, t]);
+
+      // 启动刷新开关：只写设置，不触发同步；下次启动 DSH 生效。
+      const toggleStartup = useCallback(
+        async (next) => {
+          setStartup(next);
+          setBusy('startup');
+          setFail('');
+          setNotice('');
+          try {
+            const result = await api('/settings', { syncOnStartup: next });
+            setData(result.state);
+            setStartup(result.state?.settings?.syncOnStartup !== false);
+            setNotice(next ? t('panel.startup.on') : t('panel.startup.off'));
+          } catch (err) {
+            setStartup(!next);
+            setFail(err instanceof Error ? err.message : String(err));
+          } finally {
+            setBusy('');
+          }
+        },
+        [setData, t],
+      );
 
       const saveTemplate = useCallback(async () => {
         setBusy('template');
@@ -1208,6 +1248,22 @@ window.__ModuleLoader__.load({
               onChange: (event) => setTemplate(event.target.value),
             }),
             h('div', { className: 'mc-preview' }, t('panel.template.preview'), h('strong', null, preview)),
+            h(
+              'div',
+              { className: 'mc-toggle-row' },
+              h(
+                'label',
+                { className: 'mc-toggle' },
+                h('input', {
+                  type: 'checkbox',
+                  checked: startup,
+                  disabled: Boolean(busy),
+                  onChange: (event) => void toggleStartup(event.target.checked),
+                }),
+                h('span', null, t('panel.startup.title')),
+              ),
+              h('span', { className: 'mc-note' }, t('panel.startup.hint')),
+            ),
           ),
           h(
             'div',

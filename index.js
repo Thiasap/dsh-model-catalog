@@ -142,6 +142,7 @@ function effectiveConfig(state, config) {
       if (savedTemplate === LEGACY_NAME_TEMPLATE) return DEFAULTS.nameTemplate;
       return savedTemplate || DEFAULTS.nameTemplate;
     })(),
+    syncOnStartup: bool('syncOnStartup'),
     syncMissingModels: bool('syncMissingModels'),
     syncReasoningEfforts: bool('syncReasoningEfforts'),
     syncContextWindow: bool('syncContextWindow'),
@@ -893,18 +894,23 @@ export function apply(ctx, rawConfig = {}) {
           if (typeof body.nameTemplate === 'string') {
             state.settings.nameTemplate = body.nameTemplate.trim() || DEFAULTS.nameTemplate;
           }
-          for (const key of ['syncMissingModels', 'syncReasoningEfforts', 'syncContextWindow']) {
+          for (const key of ['syncMissingModels', 'syncReasoningEfforts', 'syncContextWindow', 'syncOnStartup']) {
             if (typeof body[key] === 'boolean') state.settings[key] = body[key];
           }
 
           const { cfg } = resolveConnection(ctx, state, config);
-          if (cfg.provider && !cfg.createProvider) {
-            const exists = listProviders(ctx).some((provider) => provider.id === cfg.provider);
-            if (!exists) throw new Error(`模型组 ${cfg.provider} 不存在；请从列表中选择或新建`);
-          }
-          if (cfg.createProvider && !cfg.provider) throw new Error('新建模型组需要填写模型组 ID');
-          if (cfg.provider && (!cfg.baseURL || !cfg.apiKeyEnv)) {
-            throw new Error('请填写接口地址和 API Key 引用');
+          // 只改开关类设置（例如启动刷新）时不做连接校验，避免被没填完的连接配置挡住。
+          const touchedConnection = ['baseURL', 'apiKeyEnv', 'provider', 'providerDisplayName', 'providerApi', 'createProvider']
+            .some((key) => Object.prototype.hasOwnProperty.call(body, key));
+          if (touchedConnection || body.apply === true) {
+            if (cfg.provider && !cfg.createProvider) {
+              const exists = listProviders(ctx).some((provider) => provider.id === cfg.provider);
+              if (!exists) throw new Error(`模型组 ${cfg.provider} 不存在；请从列表中选择或新建`);
+            }
+            if (cfg.createProvider && !cfg.provider) throw new Error('新建模型组需要填写模型组 ID');
+            if (cfg.provider && (!cfg.baseURL || !cfg.apiKeyEnv)) {
+              throw new Error('请填写接口地址和 API Key 引用');
+            }
           }
 
           await writeState(statePath, state);
@@ -968,12 +974,17 @@ export function apply(ctx, rawConfig = {}) {
   }, 'model-catalog: template migration');
 
   ctx.effect(() => {
-    if (!config.syncOnStartup) return () => {};
     const timer = setTimeout(() => {
       void serial(async () => {
         try {
           let state = await readState(statePath);
           let { cfg } = resolveConnection(ctx, state, config);
+
+          // 面板里可关闭「启动刷新」。关闭时连连接信息迁移也跳过，不做任何写入。
+          if (!cfg.syncOnStartup) {
+            console.log('[model-catalog] startup sync disabled in settings');
+            return;
+          }
 
           // 升级迁移：旧版本没有连接字段；如果已有目录，自动匹配包含这些模型 id 的模型组。
           const hasProviderSetting = state.settings && Object.prototype.hasOwnProperty.call(state.settings, 'provider');
@@ -1006,7 +1017,10 @@ export function apply(ctx, rawConfig = {}) {
           state.lastError = null;
           await writeState(statePath, state);
           const sync = await syncCatalog(ctx, cfg, state, 'startup');
-          console.log(`[model-catalog] startup: ${catalog.length} models, provider ${cfg.provider}, sync ${sync.changed ? 'applied' : 'unchanged'}`);
+          console.log(
+            `[model-catalog] startup: ${catalog.length} models, provider ${cfg.provider}, `
+            + `sync ${sync.changed ? `applied (+${sync.added || 0} / -${sync.removed || 0})` : 'unchanged'}`,
+          );
         } catch (error) {
           const message = errorMessage(error);
           const state = await readState(statePath);
