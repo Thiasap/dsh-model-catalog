@@ -21,21 +21,26 @@
 
 ## 安装
 
-把本目录作为本地 bundle 安装到 DSH profile：
+### 插件管理器
 
 ```text
 插件管理 → 从本地文件夹安装 → 选择本目录
 ```
 
-或使用 DSH CLI（按你的 profile 调整）：
+### DSH CLI（推荐给其他机器）
 
 ```bash
-# 本地目录
-dsh plugin --profile desktop add /path/to/dsh-model-catalog
+# 直接装 GitHub 仓库
+dsh plugin --profile <profile> add github:Thiasap/dsh-model-catalog
 
-# 或从 GitHub 安装
-dsh plugin --profile desktop add github:<your-account>/dsh-model-catalog
+# 或装指定版本的 Release 包
+dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.1.0/dsh-model-catalog-1.1.0.tgz
+
+# 本地目录
+dsh plugin --profile <profile> add /path/to/dsh-model-catalog
 ```
+
+> `github:user/repo` 装的是仓库默认分支的最新提交；想要可复现版本就用 Release 的 tarball 链接。
 
 安装后刷新一次页面（F5），左侧栏会出现「模型目录」图标。
 
