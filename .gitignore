@@ -33,6 +33,8 @@ test-*.mjs
 test-*.cjs
 debug-*.mjs
 debug-*.cjs
+verify-*.mjs
+verify-*.cjs
 
 # Packaging artifacts
 *.tgz

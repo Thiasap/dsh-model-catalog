@@ -63,15 +63,35 @@ window.__ModuleLoader__.load({
       'panel.template.preview': '预览：',
       'panel.search': '搜索模型、id、描述…',
       'panel.filter.all': '全部',
-      'panel.filter.synced': '已同步',
-      'panel.filter.unsynced': '未同步',
+      'panel.filter.synced': '已导入',
+      'panel.filter.unsynced': '未导入',
+      'panel.filter.stale': '已下架',
       'panel.filter.cn': '国内',
       'panel.filter.global': '国际',
       'panel.empty': '没有匹配的模型',
+      'panel.pick.select': '选择',
+      'panel.pick.all': '全选当前',
+      'panel.pick.none': '取消选择',
+      'panel.pick.count': '已选',
+      'panel.pick.beforeSync': '点右上角「同步到 DSH」生效',
+      'panel.pick.noneSelected': '先勾选要处理的模型',
+      'panel.pick.done': '已更新模型组',
+      'panel.toImport': '将导入',
+      'panel.toRemove': '将移除',
+      'panel.staleKeep': '保留',
+      'panel.staleDrop': '删掉',
+      'panel.stale': '云端已无此模型',
+      'panel.deleteOne': '从模型组删除',
+      'panel.importOne': '导入',
+      'panel.imported': '已导入',
+      'panel.group.stale': '需要处理',
+      'panel.group.imported': '已导入',
+      'panel.group.other': '可导入',
       'panel.loading': '正在读取模型目录…',
       'panel.error': '出错了',
       'panel.retry': '重试',
-      'panel.note': '启动 DSH 时会自动拉取接口并按 id 同步；「同步到 DSH」会立即重写所选模型组的模型名称与思考档位。',
+      'panel.note':
+        '勾选的模型就是 DSH 里保留的模型：点右上角「同步到 DSH」后，勾选项会被导入/刷新，未勾选项从模型组移除。目录里已下架的旧模型默认保留并置顶标红，取消勾选或点「删掉」再同步即可清除。',
       'panel.connection.title': '连接配置',
       'panel.connection.hint': '从已有模型组引入，或新建一个模型组。接口地址和密钥引用只保存在本机，密钥写入 DSH 凭据。',
       'panel.connection.provider': '模型组',
@@ -149,15 +169,35 @@ window.__ModuleLoader__.load({
       'panel.template.preview': 'Preview: ',
       'panel.search': 'Search model, id, description…',
       'panel.filter.all': 'All',
-      'panel.filter.synced': 'Synced',
-      'panel.filter.unsynced': 'Unsynced',
+      'panel.filter.synced': 'Imported',
+      'panel.filter.unsynced': 'Not imported',
+      'panel.filter.stale': 'Delisted',
       'panel.filter.cn': 'China',
       'panel.filter.global': 'Global',
       'panel.empty': 'No matching models',
+      'panel.pick.select': 'Select',
+      'panel.pick.all': 'Select all shown',
+      'panel.pick.none': 'Clear selection',
+      'panel.pick.count': 'selected',
+      'panel.pick.beforeSync': 'click “Sync to DSH” to apply',
+      'panel.pick.noneSelected': 'Select at least one model first',
+      'panel.pick.done': 'Model group updated',
+      'panel.toImport': 'will import',
+      'panel.toRemove': 'will remove',
+      'panel.staleKeep': 'Keep',
+      'panel.staleDrop': 'Drop',
+      'panel.stale': 'No longer in catalog',
+      'panel.deleteOne': 'Remove from model group',
+      'panel.importOne': 'Import',
+      'panel.imported': 'Imported',
+      'panel.group.stale': 'Needs attention',
+      'panel.group.imported': 'Imported',
+      'panel.group.other': 'Available',
       'panel.loading': 'Loading the model catalog…',
       'panel.error': 'Something went wrong',
       'panel.retry': 'Retry',
-      'panel.note': 'DSH fetches and syncs on startup. “Sync to DSH” immediately rewrites the selected model group’s names and reasoning levels.',
+      'panel.note':
+        'Checked models are the ones kept in DSH. “Sync to DSH” imports/refreshes the checked models and removes the unchecked ones from the model group. Models that dropped out of the catalog stay pinned and highlighted in red; uncheck them (or use “Drop”) and sync to remove them.',
       'panel.connection.title': 'Connection',
       'panel.connection.hint': 'Import an existing model group, or create one. The URL and credential reference stay local; the key is stored in DSH credentials.',
       'panel.connection.provider': 'Model group',
@@ -265,7 +305,21 @@ window.__ModuleLoader__.load({
 .mc-chip:hover{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);}
 .mc-chip[data-active="true"]{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 13%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 46%,transparent);color:var(--dsw-alias-brand-primary);font-weight:600;}
 .mc-chip[data-default="true"]{border-style:dashed;}
-.mc-row-actions{display:flex;flex-direction:column;justify-content:center;flex:0 0 auto;}
+.mc-row-actions{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:7px;flex:0 0 auto;}
+.mc-pick{display:flex;align-items:flex-start;padding-top:2px;flex:0 0 auto;}
+.mc-pick input{width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--dsw-alias-brand-primary);}
+.mc-row[data-stale="true"]{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,var(--dsw-alias-border-l1));background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 7%,var(--dsw-alias-bg-layer-1));}
+.mc-row[data-stale="true"] .mc-name{color:var(--dsw-alias-state-error-primary);}
+.mc-row[data-selected="true"]{box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary) 38%,transparent);}
+.mc-badge-stale{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 42%,transparent);}
+.mc-badge-imported{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 36%,transparent);}
+.mc-group-title{display:flex;align-items:center;gap:8px;margin:16px 0 8px;font-size:11.5px;color:var(--dsw-alias-label-secondary);}
+.mc-group-title:first-child{margin-top:0;}
+.mc-group-title::after{content:"";flex:1;height:1px;background:var(--dsw-alias-border-l1);}
+.mc-bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;}
+.mc-bulk .mc-count{margin-left:auto;}
+.mc-btn-danger{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 42%,transparent);}
+.mc-btn-danger:hover{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);}
 .mc-empty,.mc-loading{padding:42px 20px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:12.5px;}
 .mc-note{font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:14px;line-height:1.65;}
 `;
@@ -387,7 +441,7 @@ window.__ModuleLoader__.load({
     }
 
     function ModelRow(props) {
-      const { m, t, synced, isDefault, defaultEffort, busy, onSelect } = props;
+      const { m, t, imported, stale, isDefault, defaultEffort, busy, checked, onToggle, onSelect } = props;
       const efforts = Array.isArray(m.efforts) ? m.efforts : [];
       const [effort, setEffort] = useState(
         isDefault ? defaultEffort || '' : m.defaultEffort || efforts[0] || '',
@@ -399,7 +453,22 @@ window.__ModuleLoader__.load({
 
       return h(
         'div',
-        { className: 'mc-row', 'data-default': isDefault ? 'true' : 'false' },
+        {
+          className: 'mc-row',
+          'data-default': isDefault ? 'true' : 'false',
+          'data-stale': stale ? 'true' : 'false',
+          'data-selected': checked ? 'true' : 'false',
+        },
+        h(
+          'label',
+          { className: 'mc-pick', title: t('panel.pick.select') },
+          h('input', {
+            type: 'checkbox',
+            checked: Boolean(checked),
+            onChange: () => onToggle(m.id),
+            'aria-label': `${t('panel.pick.select')} ${m.id}`,
+          }),
+        ),
         h(
           'div',
           { className: 'mc-row-main' },
@@ -408,64 +477,103 @@ window.__ModuleLoader__.load({
             { className: 'mc-row-title' },
             h('span', { className: 'mc-name' }, m.displayName || m.name),
             isDefault ? h('span', { className: 'mc-badge mc-badge-default' }, t('panel.default')) : null,
-            synced ? null : h('span', { className: 'mc-badge mc-badge-unsynced' }, t('panel.unsynced')),
-            m.creditValue === 0 ? h('span', { className: 'mc-badge mc-badge-free' }, t('panel.free')) : null,
-            m.credits ? h('span', { className: 'mc-credit' }, m.credits) : null,
+            stale
+              ? h('span', { className: 'mc-badge mc-badge-stale' }, t('panel.stale'))
+              : imported === checked
+                ? h(
+                    'span',
+                    { className: 'mc-badge mc-badge-imported' },
+                    checked ? t('panel.imported') : t('panel.toRemove'),
+                  )
+                : h(
+                    'span',
+                    { className: 'mc-badge mc-badge-unsynced' },
+                    checked ? t('panel.toImport') : t('panel.toRemove'),
+                  ),
+            !stale && m.creditValue === 0 ? h('span', { className: 'mc-badge mc-badge-free' }, t('panel.free')) : null,
+            !stale && m.credits ? h('span', { className: 'mc-credit' }, m.credits) : null,
           ),
           h('div', { className: 'mc-id' }, m.id),
-          m.cleanDescription || m.description
+          !stale && (m.cleanDescription || m.description)
             ? h('div', { className: 'mc-desc' }, m.cleanDescription || m.description)
             : null,
-          h(
-            'div',
-            { className: 'mc-meta' },
-            h('span', null, `${t('panel.context')} ${fmt(m.contextWindow)}`),
-            h('span', null, `${t('panel.output')} ${fmt(m.maxTokens)}`),
-            m.supportsImages ? h('span', null, t('panel.vision')) : null,
-            m.vendor ? h('span', null, `vendor ${m.vendor}`) : null,
-            m.tier ? h('span', null, m.tier) : null,
-          ),
-          efforts.length > 0
-            ? h(
-                'div',
-                { className: 'mc-efforts' },
-                h('span', { className: 'mc-efforts-label' }, t('panel.reasoning')),
-                efforts.map((item) =>
-                  h(
-                    'button',
-                    {
-                      key: item,
-                      type: 'button',
-                      className: 'mc-chip',
-                      'data-active': selected === item ? 'true' : 'false',
-                      'data-default': m.defaultEffort === item ? 'true' : 'false',
-                      title: m.defaultEffort === item ? t('panel.apiDefault') : undefined,
-                      onClick: () => setEffort(item),
-                    },
-                    effortLabel(t, item),
-                  ),
-                ),
-              )
+          stale
+            ? null
             : h(
                 'div',
-                { className: 'mc-efforts' },
-                h('span', { className: 'mc-efforts-label' }, t('panel.reasoning')),
-                h('span', { className: 'mc-id' }, t('panel.noReasoning')),
+                { className: 'mc-meta' },
+                h('span', null, `${t('panel.context')} ${fmt(m.contextWindow)}`),
+                h('span', null, `${t('panel.output')} ${fmt(m.maxTokens)}`),
+                m.supportsImages ? h('span', null, t('panel.vision')) : null,
+                m.vendor ? h('span', null, `vendor ${m.vendor}`) : null,
+                m.tier ? h('span', null, m.tier) : null,
               ),
+          stale
+            ? null
+            : efforts.length > 0
+              ? h(
+                  'div',
+                  { className: 'mc-efforts' },
+                  h('span', { className: 'mc-efforts-label' }, t('panel.reasoning')),
+                  efforts.map((item) =>
+                    h(
+                      'button',
+                      {
+                        key: item,
+                        type: 'button',
+                        className: 'mc-chip',
+                        'data-active': selected === item ? 'true' : 'false',
+                        'data-default': m.defaultEffort === item ? 'true' : 'false',
+                        title: m.defaultEffort === item ? t('panel.apiDefault') : undefined,
+                        onClick: () => setEffort(item),
+                      },
+                      effortLabel(t, item),
+                    ),
+                  ),
+                )
+              : h(
+                  'div',
+                  { className: 'mc-efforts' },
+                  h('span', { className: 'mc-efforts-label' }, t('panel.reasoning')),
+                  h('span', { className: 'mc-id' }, t('panel.noReasoning')),
+                ),
         ),
         h(
           'div',
           { className: 'mc-row-actions' },
-          h(
-            'button',
-            {
-              type: 'button',
-              className: isDefault ? 'mc-btn' : 'mc-btn mc-btn-primary',
-              disabled: busy,
-              onClick: () => onSelect(m, selected),
-            },
-            busy ? t('panel.applying') : isDefault ? t('panel.setDefaultAgain') : t('panel.setDefault'),
-          ),
+          stale
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'mc-btn mc-btn-danger',
+                  disabled: busy,
+                  onClick: () => onToggle(m.id),
+                },
+                checked ? t('panel.staleKeep') : t('panel.staleDrop'),
+              )
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'mc-btn',
+                  disabled: busy,
+                  onClick: () => onToggle(m.id),
+                },
+                imported ? t('panel.deleteOne') : t('panel.importOne'),
+              ),
+          stale
+            ? null
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  className: isDefault ? 'mc-btn' : 'mc-btn mc-btn-primary',
+                  disabled: busy,
+                  onClick: () => onSelect(m, selected),
+                },
+                busy ? t('panel.applying') : isDefault ? t('panel.setDefaultAgain') : t('panel.setDefault'),
+              ),
         ),
       );
     }
@@ -492,6 +600,27 @@ window.__ModuleLoader__.load({
       const [providerChoice, setProviderChoice] = useState('');
       const [apiKey, setApiKey] = useState('');
       const [credential, setCredential] = useState(null);
+      const [picked, setPicked] = useState(() => new Set());
+      const pickedInitialized = useRef(false);
+
+      // 勾选集合 = 「DSH 里应该有的模型」。首次拿到数据时按当前模型组预勾选，
+      // 之后由用户自己改；换个模型组或刷新后重新对齐。
+      useEffect(() => {
+        if (!data) return;
+        if (pickedInitialized.current) return;
+        pickedInitialized.current = true;
+        setPicked(new Set(data.syncedIds || []));
+      }, [data]);
+
+      // 切模型组时重新按新模型组的已导入集合对齐。
+      const lastProvider = useRef('');
+      useEffect(() => {
+        const provider = (data && data.provider) || '';
+        const signature = `${provider}|${data ? data.fetchedAt : 0}`;
+        if (!data || lastProvider.current === signature) return;
+        lastProvider.current = signature;
+        if (pickedInitialized.current) setPicked(new Set(data.syncedIds || []));
+      }, [data]);
 
       useEffect(() => {
         if (data && !templateInitialized.current) {
@@ -665,6 +794,8 @@ window.__ModuleLoader__.load({
 
       const models = (data && data.catalog) || [];
       const syncedIds = useMemo(() => new Set((data && data.syncedIds) || []), [data]);
+      const staleModels = (data && data.staleModels) || [];
+      const staleIds = useMemo(() => new Set(staleModels.map((model) => model.id)), [staleModels]);
       const defaultSelection = data && data.defaultSelection;
       const isDefault = useCallback(
         (model) =>
@@ -674,19 +805,61 @@ window.__ModuleLoader__.load({
         [data, defaultSelection],
       );
 
+      const togglePick = useCallback((id) => {
+        setPicked((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      }, []);
+
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        const list = models.filter((model) => {
+        const match = (model) => {
           if (filter === 'synced' && !syncedIds.has(model.id)) return false;
           if (filter === 'unsynced' && syncedIds.has(model.id)) return false;
+          if (filter === 'stale' && !staleIds.has(model.id)) return false;
           if (filter === 'cn' && !String(model.id).startsWith('cn:')) return false;
           if (filter === 'global' && !String(model.id).startsWith('global:')) return false;
           if (!q) return true;
           return [model.id, model.name, model.displayName, model.credits, model.description, model.vendor, model.tier]
             .some((value) => String(value || '').toLowerCase().includes(q));
+        };
+        const catalogRows = models.filter(match).map((model) => ({
+          model,
+          stale: false,
+          imported: syncedIds.has(model.id),
+        }));
+        // 目录里已经下架的旧模型只有「全部 / 已下架 / 已导入」列表里出现，
+        // 单独标红并置顶，方便一次性清掉。
+        const staleRows =
+          filter === 'unsynced' || filter === 'cn' || filter === 'global'
+            ? []
+            : staleModels.filter(match).map((model) => ({ model, stale: true, imported: true }));
+        // 顺序：需处理（已下架）→ 已导入 → 可导入；组内保持接口顺序。
+        const importedRows = catalogRows.filter((row) => row.imported);
+        const otherRows = catalogRows.filter((row) => !row.imported);
+        return [...staleRows, ...importedRows, ...otherRows];
+      }, [models, staleModels, staleIds, syncedIds, filter, query]);
+
+      const visibleIds = useMemo(() => filtered.map((row) => row.model.id), [filtered]);
+
+      const pickAll = useCallback(() => {
+        setPicked((prev) => {
+          const next = new Set(prev);
+          for (const id of visibleIds) next.add(id);
+          return next;
         });
-        return list.sort((a, b) => (isDefault(a) ? -1 : 0) - (isDefault(b) ? -1 : 0));
-      }, [models, syncedIds, filter, query, isDefault]);
+      }, [visibleIds]);
+
+      const pickNone = useCallback(() => {
+        setPicked((prev) => {
+          const next = new Set(prev);
+          for (const id of visibleIds) next.delete(id);
+          return next;
+        });
+      }, [visibleIds]);
 
       const previewModel = models.find((model) => isDefault(model)) || models[0];
       const preview = previewModel ? formatName(template, previewModel) : '—';
@@ -706,25 +879,38 @@ window.__ModuleLoader__.load({
         }
       }, [setData, t]);
 
+      // 勾选 = 这份列表就是 DSH 里应该有的模型集合。
+      // 同步时：勾选的补齐/更新，未勾选的目录模型移除，目录里已下架的旧模型保留
+      // （除非用户显式勾掉它 / 单条删除），避免悄悄删掉用户的私有模型。
       const doSync = useCallback(async () => {
         setBusy('sync');
         setFail('');
         setNotice('');
         try {
-          const result = await api('/sync', {});
+          const keep = [...picked];
+          const importIds = keep.filter((id) => !syncedIds.has(id) && !staleIds.has(id));
+          const removeIds = [
+            ...models.map((model) => model.id).filter((id) => !picked.has(id)),
+            ...[...staleIds].filter((id) => !picked.has(id)),
+          ];
+          const result = await api('/sync', {
+            ...(keep.length > 0 ? { keep } : {}),
+            import: importIds,
+            remove: removeIds,
+          });
           setData(result.state);
           const sync = result.sync || {};
           setNotice(
             `${t('panel.synced')} · ${sync.changed ? t('panel.changed') : t('panel.unchanged')}${
               sync.added ? ` · +${sync.added}` : ''
-            }`,
+            }${sync.removed ? ` · -${sync.removed}` : ''}`,
           );
         } catch (err) {
           setFail(err instanceof Error ? err.message : String(err));
         } finally {
           setBusy('');
         }
-      }, [setData, t]);
+      }, [models, picked, setData, staleIds, syncedIds, t]);
 
       const saveTemplate = useCallback(async () => {
         setBusy('template');
@@ -1036,7 +1222,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'mc-seg' },
-              ['all', 'synced', 'unsynced', 'cn', 'global'].map((key) =>
+              ['all', 'synced', 'unsynced', 'stale', 'cn', 'global'].map((key) =>
                 h(
                   'button',
                   {
@@ -1045,29 +1231,61 @@ window.__ModuleLoader__.load({
                     'data-active': filter === key ? 'true' : 'false',
                     onClick: () => setFilter(key),
                   },
-                  t(`panel.filter.${key}`),
+                  key === 'stale' && staleIds.size > 0
+                    ? `${t(`panel.filter.${key}`)} ${staleIds.size}`
+                    : t(`panel.filter.${key}`),
                 ),
               ),
             ),
-            h('span', { className: 'mc-count' }, `${filtered.length} / ${models.length}`),
+            h('span', { className: 'mc-count' }, `${filtered.length} / ${models.length + staleIds.size}`),
+          ),
+          h(
+            'div',
+            { className: 'mc-bulk' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'mc-btn',
+                disabled: Boolean(busy) || visibleIds.length === 0,
+                onClick: pickAll,
+              },
+              t('panel.pick.all'),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'mc-btn',
+                disabled: Boolean(busy) || picked.size === 0,
+                onClick: pickNone,
+              },
+              t('panel.pick.none'),
+            ),
+            h('span', { className: 'mc-count' }, `${t('panel.pick.count')} ${picked.size} · ${t('panel.pick.beforeSync')}`),
           ),
           filtered.length === 0
             ? h('div', { className: 'mc-empty' }, t('panel.empty'))
             : h(
                 'div',
                 { className: 'mc-list' },
-                filtered.map((model) =>
-                  h(ModelRow, {
+                filtered.map((row) => {
+                  const model = row.model;
+                  const rowBusy = busy === `select:${model.id}`;
+                  return h(ModelRow, {
                     key: model.id,
                     m: model,
                     t,
-                    synced: syncedIds.has(model.id),
+                    imported: row.imported,
+                    stale: row.stale,
+                    checked: picked.has(model.id),
+                    onToggle: togglePick,
                     isDefault: isDefault(model),
                     defaultEffort: isDefault(model) ? defaultSelection?.reasoningEffort || '' : '',
-                    busy: busy === `select:${model.id}`,
+                    busy: rowBusy,
                     onSelect: selectModel,
-                  }),
-                ),
+                  });
+                }),
               ),
           h('div', { className: 'mc-note' }, t('panel.note')),
         ),

@@ -31,9 +31,11 @@ const DEFAULTS = {
   createProvider: false,
   nameTemplate: '{prefix}{name} [{credits}]',
   syncOnStartup: true,
-  syncMissingModels: true,
+  syncMissingModels: false,
   syncReasoningEfforts: true,
   syncContextWindow: true,
+  // 目录里不存在的旧模型是否删除；默认保留（手动勾选删除）。
+  removeMissing: false,
   requestTimeoutMs: 30000,
 };
 
@@ -143,6 +145,11 @@ function effectiveConfig(state, config) {
     syncMissingModels: bool('syncMissingModels'),
     syncReasoningEfforts: bool('syncReasoningEfforts'),
     syncContextWindow: bool('syncContextWindow'),
+    removeMissing: bool('removeMissing'),
+    selectedIds: Array.isArray(saved.selectedIds) ? saved.selectedIds.filter((id) => typeof id === 'string') : null,
+    keepMissingIds: Array.isArray(saved.keepMissingIds)
+      ? saved.keepMissingIds.filter((id) => typeof id === 'string')
+      : [],
     requestTimeoutMs: Number(config.requestTimeoutMs) >= 1000 ? Number(config.requestTimeoutMs) : DEFAULTS.requestTimeoutMs,
   };
 }
@@ -312,9 +319,17 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
   const models = [];
   let changed = 0;
 
+  // 目录里已经没有的旧模型默认保留：导入是「勾选」行为，同步不能悄悄删掉
+  // 用户自己加的模型。只有 removeMissing 明确要求时才移除。
+  let removed = 0;
   for (const model of existing) {
-    const meta = model && byId.get(model.id);
+    if (!model || typeof model.id !== 'string') continue;
+    const meta = byId.get(model.id);
     if (!meta) {
+      if (config.removeMissing && !config.keepMissingIds.includes(model.id)) {
+        removed += 1;
+        continue;
+      }
       models.push(model);
       continue;
     }
@@ -325,13 +340,17 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
   }
 
   let added = 0;
-  if (config.syncMissingModels || forceModelId) {
-    for (const meta of catalog) {
-      if (seen.has(meta.id)) continue;
-      if (!config.syncMissingModels && meta.id !== forceModelId) continue;
-      models.push(newModel(meta, config, config.nameTemplate));
-      added += 1;
+  const wanted = Array.isArray(config.selectedIds) ? config.selectedIds : null;
+  for (const meta of catalog) {
+    if (seen.has(meta.id)) continue;
+    if (wanted) {
+      // 有显式勾选集合时只按勾选导入；forceModelId（设为默认时）额外放行。
+      if (!wanted.includes(meta.id) && meta.id !== forceModelId) continue;
+    } else if (!config.syncMissingModels) {
+      continue;
     }
+    models.push(newModel(meta, config, config.nameTemplate));
+    added += 1;
   }
 
   providers[config.provider] = { ...profile, models };
@@ -344,7 +363,8 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
       total: models.length,
       matched: seen.size,
       added,
-      changed: changed + added,
+      removed,
+      changed: changed + added + removed,
     },
   };
 }
@@ -493,6 +513,110 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
   return { changed: true, ...preview.summary };
 }
 
+/**
+ * 按勾选集合改模型组分子集：
+ *  - importIds：要导入（加入模型组）的目录模型 id；
+ *  - removeIds：要从模型组删除的模型 id（含目录里已不存在的旧模型）。
+ * 只动模型组里本插件管理的字段，保留用户手工加的其它字段。
+ */
+async function applySelection(ctx, config, state, importIds, removeIds) {
+  const catalog = Array.isArray(state.catalog) ? state.catalog : [];
+  if (catalog.length === 0) throw new Error('还没有模型目录，请先刷新');
+  if (!config.provider) throw new Error('还没有选择模型组');
+  const entry = findLlmEntry(ctx);
+  if (!entry) throw new Error('找不到 llm-pi-ai 的配置行');
+
+  let profile = entry.options?.config?.providers?.[config.provider];
+  if (!profile) {
+    try {
+      const row = ctx.configEditor.configuration().find((item) => item.entry === entry);
+      const inherited = row?.inherited?.providers?.[config.provider];
+      if (inherited) profile = inherited;
+    } catch {
+      /* keep undefined */
+    }
+  }
+  if (!profile && !config.createProvider) {
+    throw new Error(`模型组 ${config.provider} 不存在；请从已有模型组引入，或新建一个`);
+  }
+
+  const byId = new Map(catalog.map((model) => [model.id, model]));
+  const toRemoveSet = new Set(removeIds);
+  const current = Array.isArray(profile?.models) ? profile.models : [];
+  const currentIds = new Set(current.map((model) => model?.id));
+
+  /** 只保留 keep 里的模型，并按目录元数据刷新名称/能力字段。 */
+  const rebuild = (existingModels) => {
+    const kept = [];
+    let changed = 0;
+    for (const model of existingModels) {
+      if (!model || typeof model.id !== 'string') continue;
+      if (toRemoveSet.has(model.id)) {
+        changed += 1;
+        continue;
+      }
+      const meta = byId.get(model.id);
+      if (!meta) {
+        kept.push(model);
+        continue;
+      }
+      const merged = mergeModel(model, meta, config, config.nameTemplate);
+      if (!isDeepStrictEqual(merged, model)) changed += 1;
+      kept.push(merged);
+    }
+    let added = 0;
+    for (const id of importIds) {
+      if (currentIds.has(id) || toRemoveSet.has(id)) continue;
+      const meta = byId.get(id);
+      if (!meta) continue;
+      kept.push(newModel(meta, config, config.nameTemplate));
+      added += 1;
+    }
+    return { kept, changed, added };
+  };
+
+  const preview = rebuild(current);
+  const nextProfile = { ...(profile || {
+    displayName: config.providerDisplayName || config.provider,
+    api: config.providerApi || 'openai-completions',
+    baseURL: config.baseURL,
+    apiKeyEnv: config.apiKeyEnv,
+  }), models: preview.kept };
+
+  const before = { ...(entry.options?.config?.providers?.[config.provider] || profile || {}), models: current };
+  const changed = !isDeepStrictEqual(before, nextProfile) || preview.added > 0;
+
+  if (changed) {
+    await withHmrRetry(() => ctx.configEditor.edit(entry, (now, inherited) => {
+      const providers = { ...(inherited?.providers || {}), ...(now?.providers || {}) };
+      const liveProfile = providers[config.provider] || nextProfile;
+      const result = rebuild(Array.isArray(liveProfile.models) ? liveProfile.models : []);
+      return {
+        ...(inherited || {}),
+        ...(now || {}),
+        providers: {
+          ...providers,
+          [config.provider]: { ...liveProfile, models: result.kept },
+        },
+      };
+    }));
+  }
+
+  state.lastSync = {
+    at: Date.now(),
+    reason: 'selection',
+    changed,
+    provider: config.provider,
+    template: config.nameTemplate,
+    total: preview.kept.length,
+    added: preview.added,
+    removed: current.length + preview.added - preview.kept.length,
+  };
+  state.lastError = null;
+  await writeState(stateFilePath(), state);
+  return { changed, imported: preview.added, removed: current.length + preview.added - preview.kept.length };
+}
+
 async function statePayload(ctx, state, config) {
   const { cfg, providers, existing } = resolveConnection(ctx, state, config);
   const catalog = (Array.isArray(state.catalog) ? state.catalog : []).map((model) => ({
@@ -500,6 +624,11 @@ async function statePayload(ctx, state, config) {
     displayName: applyTemplate(cfg.nameTemplate, model),
   }));
   const models = providerModels(ctx, cfg);
+  const catalogIds = new Set(catalog.map((model) => model.id));
+  // 目录里已经找不到、但还留在模型组里的模型：面板置顶标红，供手动删除。
+  const staleModels = models
+    .filter((model) => !catalogIds.has(model.id))
+    .map((model) => ({ ...model, displayName: model.name || model.id }));
   let credential = null;
   if (cfg.apiKeyEnv) {
     try {
@@ -534,6 +663,7 @@ async function statePayload(ctx, state, config) {
     defaultSelection: selection,
     syncedIds: models.map((model) => model.id),
     syncedModels: models,
+    staleModels,
   };
 }
 
@@ -666,16 +796,50 @@ export function apply(ctx, rawConfig = {}) {
       }
 
       if (req.method === 'POST' && suffix === '/sync') {
+        const body = await readJsonBody(req);
         const result = await serial(async () => {
           const state = await readState(statePath);
           const { cfg } = resolveConnection(ctx, state, config);
           if (!cfg.provider || !cfg.baseURL || !cfg.apiKeyEnv) {
             throw new Error('请先在面板里选择模型组，并填写接口地址与 API Key 引用');
           }
+          const importIds = Array.isArray(body.import) ? body.import.filter((id) => typeof id === 'string') : [];
+          const removeIds = Array.isArray(body.remove) ? body.remove.filter((id) => typeof id === 'string') : [];
+          // 面板传来显式的导入/移除清单时，按清单改正模型组；否则走旧的
+          // 「只补名称与思考档位」同步。
+          if (importIds.length > 0 || removeIds.length > 0) {
+            const applied = await applySelection(ctx, cfg, state, importIds, removeIds);
+            return {
+              ok: true,
+              sync: { changed: applied.changed, added: applied.imported, removed: applied.removed, total: undefined },
+              applied,
+              state: await statePayload(ctx, state, config),
+            };
+          }
           const sync = await syncCatalog(ctx, cfg, state, 'manual');
           return {
             ok: true,
             sync,
+            state: await statePayload(ctx, state, config),
+          };
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (req.method === 'POST' && suffix === '/import') {
+        const body = await readJsonBody(req);
+        const result = await serial(async () => {
+          const state = await readState(statePath);
+          const { cfg } = resolveConnection(ctx, state, config);
+          if (!cfg.provider) throw new Error('请先在面板里选择模型组');
+          const importIds = Array.isArray(body.import) ? body.import.filter((id) => typeof id === 'string') : [];
+          const removeIds = Array.isArray(body.remove) ? body.remove.filter((id) => typeof id === 'string') : [];
+          if (importIds.length === 0 && removeIds.length === 0) throw new Error('没有选择任何模型');
+          const applied = await applySelection(ctx, cfg, state, importIds, removeIds);
+          return {
+            ok: true,
+            applied,
             state: await statePayload(ctx, state, config),
           };
         });
@@ -701,7 +865,6 @@ export function apply(ctx, rawConfig = {}) {
           const liveEfforts = live && live.reasoningEfforts && typeof live.reasoningEfforts === 'object'
             ? Object.keys(live.reasoningEfforts)
             : [];
-          const needsSync = !live || (effort && !liveEfforts.includes(effort));
           if (needsSync) await syncCatalog(ctx, cfg, state, 'select', meta.id);
           await ctx.agentDefaultModel.saveSelection({
             provider: cfg.provider,
