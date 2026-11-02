@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Model catalog">
+  <defs>
+    <linearGradient id="mc-bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f7cf6"/>
+      <stop offset="1" stop-color="#7b3ff2"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#mc-bg)"/>
+  <path d="M17 21l5.2 23L32 27.5 41.8 44 47 21" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="12.5" r="2.4" fill="#fff" opacity=".9"/>
+</svg>

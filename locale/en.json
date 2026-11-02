@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Model Catalog",
+    "description": "Browse the model catalog with credits, descriptions, and reasoning efforts, and sync them into a selected DSH model group on startup."
+  }
+}

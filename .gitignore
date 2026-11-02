@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output and caches
+dist/
+coverage/
+.nyc_output/
+.cache/
+*.tsbuildinfo
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment and secrets
+.env
+.env.*
+.npmrc
+*.pem
+
+# Runtime state written by the plugin (lives under $DSH_HOME, not in this repo)
+state.json
+.model-catalog/
+mc-models.json
+
+# Local scratch/test harnesses
+test-*.mjs
+test-*.cjs
+debug-*.mjs
+debug-*.cjs
+
+# Packaging artifacts
+*.tgz
+*.tar.gz
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Backups and patch leftovers
+*.bak
+*.orig
+*.rej

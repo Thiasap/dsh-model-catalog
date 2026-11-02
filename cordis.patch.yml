@@ -1,0 +1,23 @@
+# 模型目录面板：启动时拉取模型目录，按 id 同步积分倍率（写入 name）
+# 与思考强度列表（写入 reasoningEfforts）到 llm-pi-ai 的指定模型组。
+#
+# 连接信息（接口地址 / API Key 引用 / 模型组）不在此处内置，统一在面板里配置：
+# 左侧栏「模型目录」图标 → 连接配置 → 从已有模型组引入，或新建模型组。
+# 密钥只保存到 DSH 凭据服务，不会写入插件状态或本文件。
+- insert:
+    - id: model-catalog
+      name: dsh-model-catalog
+      config:
+        baseURL: ''
+        apiKeyEnv: ''
+        provider: ''
+        providerDisplayName: ''
+        providerApi: openai-completions
+        createProvider: false
+        # 可用变量：{prefix} {group} {name} {id} {credits} {description} {context} {maxTokens} {vendor} {tier}
+        nameTemplate: '{prefix}{name} [{credits}]'
+        syncOnStartup: true
+        syncMissingModels: true
+        syncReasoningEfforts: true
+        syncContextWindow: true
+        requestTimeoutMs: 30000
