@@ -1,12 +1,7 @@
 /**
  * 模型目录面板 — Host 半侧。
- *
- * 通用化设计：插件本身不内置任何网关地址、密钥引用或 provider 名。
- *  - 面板里选择/新建模型组（provider），从已有模型组引入地址与密钥引用；
- *  - 启动时（或点「刷新」时）拉取 `GET {baseURL}/models`；
- *  - 以 id 为基准，把 credits（按名称模板写入 name）与 reasoning_supported_efforts
- *    （写入 reasoningEfforts）同步到 `@deepseek-ai/dsh-llm-pi-ai` 的对应模型组；
- *  - 密钥只保存到 DSH 凭据服务，插件状态文件只保存凭据引用名，不保存密钥值。
+ * 拉取 `GET {baseURL}/models`，按 id 把 credits（写入 name 模板）与 reasoning 档位
+ * 同步到 @deepseek-ai/dsh-llm-pi-ai 的指定模型组；密钥只存 DSH 凭据服务。
  */
 
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
@@ -22,7 +17,7 @@ const LLM_PLUGIN = '@deepseek-ai/dsh-llm-pi-ai';
 const API_TYPES = ['openai-completions', 'openai-responses', 'anthropic-messages'];
 
 const DEFAULTS = {
-  // 连接信息留空：由面板配置，或从已有模型组引入。插件不内置任何私有地址/密钥。
+  // 连接信息由面板写入，插件不内置地址或密钥。
   baseURL: '',
   apiKeyEnv: '',
   provider: '',
@@ -70,11 +65,7 @@ function makeSerial() {
   };
 }
 
-/**
- * configEditor.edit() 内部走 HMR 独占事务。插件刚安装/升级时，外层 HMR 事务
- * 可能还没结束，此时会抛 “HMR transactions cannot be nested”。这里只对这个
- * 特定错误做退避重试；其他配置错误立即抛给调用方。
- */
+// configEditor.edit() 走 HMR 独占事务，刚装/升级时可能撞上外层事务；只对这个错误退避重试。
 async function withHmrRetry(task, attempts = 8) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -286,10 +277,7 @@ function newModel(meta, config, template) {
   return model;
 }
 
-/**
- * 模型 id 比较：自然序（数字段按数值，`x4.9` 排在 `x4.10` 前面），
- * 大小写与标点不参与主要比较，完全相同的字符串再按码点定序，保证结果稳定。
- */
+/** 模型 id 自然序比较：数字段按数值，兼顾大小写与稳定性。 */
 function compareModelId(left, right) {
   const a = String(left ?? '');
   const b = String(right ?? '');
@@ -340,8 +328,7 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
   const models = [];
   let changed = 0;
 
-  // 目录里已经没有的旧模型默认保留：导入是「勾选」行为，同步不能悄悄删掉
-  // 用户自己加的模型。只有 removeMissing 明确要求时才移除。
+  // 目录里已下架的旧模型默认保留，只有 removeMissing 明确要求时才删。
   let removed = 0;
   for (const model of existing) {
     if (!model || typeof model.id !== 'string') continue;
@@ -360,21 +347,17 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
     models.push(merged);
   }
 
+  // 就地更新：以模型组当前 id 为准改写 name 等字段；目录里多出来的模型不自动导入
+  // （面板勾选才导入），forceModelId 是「设为默认模型」的例外。
   let added = 0;
-  const wanted = Array.isArray(config.selectedIds) ? config.selectedIds : null;
   for (const meta of catalog) {
     if (seen.has(meta.id)) continue;
-    if (wanted) {
-      // 有显式勾选集合时只按勾选导入；forceModelId（设为默认时）额外放行。
-      if (!wanted.includes(meta.id) && meta.id !== forceModelId) continue;
-    } else if (!config.syncMissingModels) {
-      continue;
-    }
+    if (meta.id !== forceModelId) continue;
     models.push(newModel(meta, config, config.nameTemplate));
     added += 1;
   }
 
-  // 同步后的顺序按 id 排序，覆盖模型组里原有的顺序（各端结果一致）。
+  // 排序后整体覆盖，本地顺序乱了也会被纠正。
   const ordered = sortModelsById(models);
   const previousIds = existing
     .filter((model) => model && typeof model.id === 'string')
@@ -432,10 +415,7 @@ function providerModels(ctx, config) {
   }));
 }
 
-/**
- * 把面板设置解析成可用的连接信息：选中已有模型组时，空着的地址/密钥引用/
- * 显示名/协议自动从该模型组带入。
- */
+/** 选中已有模型组时，把空着的地址/密钥引用/显示名/协议从该组带入。 */
 function resolveConnection(ctx, state, config) {
   const cfg = effectiveConfig(state, config);
   const providers = listProviders(ctx);
@@ -521,8 +501,7 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
   }
 
   const preview = buildNextConfig(base, config, state, catalog, forceModelId);
-  // summary.changed 是「改了几处」的计数，对外报的 changed 是「有没有写配置」，
-  // 拆开成 updates / changed，避免计数为 0 时被当成没变化。
+  // summary.changed 是改动处数，对外 changed 表示是否写入了配置。
   const summary = { ...preview.summary, updates: preview.summary.changed };
   if (isDeepStrictEqual(preview.next, base)) {
     state.lastSync = { ...summary, at: Date.now(), reason, changed: false };
@@ -546,12 +525,7 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
   return { ...summary, changed: true };
 }
 
-/**
- * 按勾选集合改模型组分子集：
- *  - importIds：要导入（加入模型组）的目录模型 id；
- *  - removeIds：要从模型组删除的模型 id（含目录里已不存在的旧模型）。
- * 只动模型组里本插件管理的字段，保留用户手工加的其它字段。
- */
+/** 按勾选清单导入/移除模型：只动本插件管理的字段，其它字段原样保留。 */
 async function applySelection(ctx, config, state, importIds, removeIds) {
   const catalog = Array.isArray(state.catalog) ? state.catalog : [];
   if (catalog.length === 0) throw new Error('还没有模型目录，请先刷新');

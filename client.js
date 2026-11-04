@@ -858,14 +858,12 @@ window.__ModuleLoader__.load({
           stale: false,
           imported: syncedIds.has(model.id),
         }));
-        // 目录里已经下架的旧模型只有「全部 / 已下架 / 已导入」列表里出现，
-        // 单独标红并置顶，方便一次性清掉。
+        // 已下架的旧模型单独标红置顶，方便一次性清掉。
         const staleRows =
           filter === 'unsynced' || filter === 'cn' || filter === 'global'
             ? []
             : staleModels.filter(match).map((model) => ({ model, stale: true, imported: true }));
-        // 顺序：需处理（已下架）→ 已导入 → 可导入；组内按模型 id 排序，
-        // 和同步写进 DSH 的顺序保持一致。
+        // 顺序：需处理（已下架）→ 已导入 → 可导入，组内按 id 排序。
         const orderById = (rows) => rows
           .slice()
           .sort((left, right) => compareModelId(left.model.id, right.model.id));
@@ -910,9 +908,8 @@ window.__ModuleLoader__.load({
         }
       }, [setData, t]);
 
-      // 勾选 = 这份列表就是 DSH 里应该有的模型集合。
-      // 同步时：勾选的补齐/更新，未勾选的目录模型移除，目录里已下架的旧模型保留
-      // （除非用户显式勾掉它 / 单条删除），避免悄悄删掉用户的私有模型。
+      // 勾选 = DSH 里应有的模型集合：勾选的补齐/更新，取消勾选的移除；
+      // 已下架的旧模型默认保留，除非显式勾掉。
       const doSync = useCallback(async () => {
         setBusy('sync');
         setFail('');
