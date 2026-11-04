@@ -35,7 +35,7 @@
 dsh plugin --profile <profile> add github:Thiasap/dsh-model-catalog
 
 # 或装指定版本的 Release 包
-dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.2.0/dsh-model-catalog-1.2.0.tgz
+dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.2.1/dsh-model-catalog-1.2.1.tgz
 
 # 本地目录
 dsh plugin --profile <profile> add /path/to/dsh-model-catalog
