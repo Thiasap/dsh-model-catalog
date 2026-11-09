@@ -17,9 +17,8 @@
         # 可用变量：{prefix} {group} {name} {id} {credits} {description} {context} {maxTokens} {vendor} {tier}
         nameTemplate: '{prefix}{name} [{credits}]'
         # 启动时只刷新已导入模型的名称/积分/思考档位，不自动增删模型，
-        # 避免覆盖面板里勾选出来的清单。需要自动补齐时把 syncMissingModels 改成 true。
+        # 避免覆盖面板里勾选出来的清单。
         syncOnStartup: true
-        syncMissingModels: false
         syncReasoningEfforts: true
         syncContextWindow: true
         requestTimeoutMs: 30000

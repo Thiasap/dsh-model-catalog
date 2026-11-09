@@ -26,11 +26,8 @@ const DEFAULTS = {
   createProvider: false,
   nameTemplate: '{prefix}{name} [{credits}]',
   syncOnStartup: true,
-  syncMissingModels: false,
   syncReasoningEfforts: true,
   syncContextWindow: true,
-  // 目录里不存在的旧模型是否删除；默认保留（手动勾选删除）。
-  removeMissing: false,
   requestTimeoutMs: 30000,
 };
 
@@ -134,14 +131,8 @@ function effectiveConfig(state, config) {
       return savedTemplate || DEFAULTS.nameTemplate;
     })(),
     syncOnStartup: bool('syncOnStartup'),
-    syncMissingModels: bool('syncMissingModels'),
     syncReasoningEfforts: bool('syncReasoningEfforts'),
     syncContextWindow: bool('syncContextWindow'),
-    removeMissing: bool('removeMissing'),
-    selectedIds: Array.isArray(saved.selectedIds) ? saved.selectedIds.filter((id) => typeof id === 'string') : null,
-    keepMissingIds: Array.isArray(saved.keepMissingIds)
-      ? saved.keepMissingIds.filter((id) => typeof id === 'string')
-      : [],
     requestTimeoutMs: Number(config.requestTimeoutMs) >= 1000 ? Number(config.requestTimeoutMs) : DEFAULTS.requestTimeoutMs,
   };
 }
@@ -182,7 +173,10 @@ function normalizeModel(row) {
         : undefined,
     ),
     maxTokens: numberOrUndefined(row.max_output_tokens),
+    // supportsImagesDeclared 区分「目录声明 supports_images: false」和
+    // 「目录根本没这个字段」：后者不能用来覆盖用户的模态配置。
     supportsImages: row.supports_images === true,
+    supportsImagesDeclared: row.supports_images === true || row.supports_images === false,
     supportsReasoning: row.supports_reasoning !== false,
     onlyReasoning: row.only_reasoning === true,
     canDisableThinking: row.can_disable_thinking === true,
@@ -251,11 +245,25 @@ function applyTemplate(template, model) {
     .trim() || model.id;
 }
 
+const VALID_EFFORTS = new Set(EFFORT_ORDER);
+
+/**
+ * 把目录声明的档位渲染成 llm-pi-ai 的 reasoningEfforts：
+ * - 目录明确 supports_reasoning=false → false（显式声明不支持思考）；
+ * - 目录没给档位、或过滤后没有非 off 的合法档位 → undefined（不动这个字段，
+ *   保留 llm-pi-ai 里的现有配置，宿主把它读作「沿用安装目录的能力」）；
+ * - 非法档位名一律过滤，否则宿主解析整个 provider 会失败；
+ * - off 的 wire 值写 null：宿主把它读作「支持关闭、dispatch 不发参数」。
+ */
 function effortsFor(model, config) {
-  if (!config.syncReasoningEfforts || !model.supportsReasoning) return false;
-  if (!Array.isArray(model.efforts) || model.efforts.length === 0) return false;
+  if (!config.syncReasoningEfforts) return undefined;
+  if (model.supportsReasoning === false) return false;
+  const declared = Array.isArray(model.efforts)
+    ? model.efforts.filter((effort) => VALID_EFFORTS.has(effort))
+    : [];
+  if (!declared.some((effort) => effort !== 'off')) return undefined;
   const result = {};
-  for (const effort of model.efforts) result[effort] = effort;
+  for (const effort of declared) result[effort] = effort === 'off' ? null : effort;
   return result;
 }
 
@@ -263,8 +271,13 @@ function mergeModel(existing, meta, config, template) {
   const next = { ...existing, name: applyTemplate(template, meta) };
   if (config.syncContextWindow && meta.contextWindow) next.contextWindow = meta.contextWindow;
   if (meta.maxTokens) next.maxTokens = meta.maxTokens;
-  if (typeof meta.supportsImages === 'boolean') next.input = meta.supportsImages ? ['text', 'image'] : ['text'];
-  if (config.syncReasoningEfforts) next.reasoningEfforts = effortsFor(meta, config);
+  // 目录显式声明 supports_images 才覆盖 input；缺数据时保留用户在
+  // llm-pi-ai 里配置的模态，避免把视觉模型降级成纯文本。
+  if (meta.supportsImages === true) next.input = ['text', 'image'];
+  else if (meta.supportsImages === false && meta.supportsImagesDeclared) next.input = ['text'];
+  // undefined = 目录没有可用的档位信息：完全不动现有字段（保留用户配置）。
+  const efforts = effortsFor(meta, config);
+  if (efforts !== undefined) next.reasoningEfforts = efforts;
   return next;
 }
 
@@ -272,8 +285,10 @@ function newModel(meta, config, template) {
   const model = { id: meta.id, name: applyTemplate(template, meta) };
   if (meta.contextWindow) model.contextWindow = meta.contextWindow;
   if (meta.maxTokens) model.maxTokens = meta.maxTokens;
-  model.input = meta.supportsImages ? ['text', 'image'] : ['text'];
-  if (config.syncReasoningEfforts) model.reasoningEfforts = effortsFor(meta, config);
+  // 新导入的模型没有既有配置可保留，默认按目录声明落 input，缺省纯文本。
+  model.input = meta.supportsImages === true ? ['text', 'image'] : ['text'];
+  const efforts = effortsFor(meta, config);
+  if (efforts !== undefined) model.reasoningEfforts = efforts;
   return model;
 }
 
@@ -328,16 +343,12 @@ function buildNextConfig(base, config, state, catalog) {
   const models = [];
   let changed = 0;
 
-  // 目录里已下架的旧模型默认保留，只有 removeMissing 明确要求时才删。
-  let removed = 0;
+  // 目录里已下架的旧模型默认保留；只有 applySelection 的显式
+  // remove 清单（面板勾选）才会移除它们。
   for (const model of existing) {
     if (!model || typeof model.id !== 'string') continue;
     const meta = byId.get(model.id);
     if (!meta) {
-      if (config.removeMissing && !config.keepMissingIds.includes(model.id)) {
-        removed += 1;
-        continue;
-      }
       models.push(model);
       continue;
     }
@@ -368,9 +379,9 @@ function buildNextConfig(base, config, state, catalog) {
       total: ordered.length,
       matched: seen.size,
       added: 0,
-      removed,
+      removed: 0,
       reordered,
-      changed: changed + removed + (reordered ? 1 : 0),
+      changed: changed + (reordered ? 1 : 0),
     },
   };
 }
@@ -471,6 +482,36 @@ async function fetchCatalog(ctx, config) {
   const catalog = rows.map(normalizeModel).filter(Boolean);
   if (catalog.length === 0) throw new Error('模型接口没有返回任何模型（data[] 为空）');
   return catalog;
+}
+
+/**
+ * 目录骤降保护：网关偶尔只返回部分模型（例如部署中只暴露视频模型），
+ * 直接覆盖会让已导入的模型全部变成「云端已无此模型」。保留上次目录并告警，
+ * 除非调用方显式 force。
+ */
+const CATALOG_SHRINK_RATIO = 0.5;
+const CATALOG_SHRINK_MIN = 4;
+
+function catalogLooksTruncated(previous, next) {
+  const before = Array.isArray(previous) ? previous.length : 0;
+  const after = Array.isArray(next) ? next.length : 0;
+  if (before < CATALOG_SHRINK_MIN) return false;
+  if (after === 0) return true;
+  return after < before * CATALOG_SHRINK_RATIO;
+}
+
+/** 写入新目录（带骤降保护），返回是否真正应用。 */
+function applyCatalog(state, catalog, options = {}) {
+  const before = Array.isArray(state.catalog) ? state.catalog.length : 0;
+  if (!options.force && catalogLooksTruncated(state.catalog, catalog)) {
+    state.lastError = `模型目录从 ${before} 个骤减到 ${catalog.length} 个，疑似网关返回不完整，`
+      + '已保留上次目录。确认目录确实变更后，请点「强制刷新」接受。';
+    return { applied: false, warning: state.lastError, previous: before, next: catalog.length };
+  }
+  state.catalog = catalog;
+  state.fetchedAt = Date.now();
+  state.lastError = null;
+  return { applied: true, warning: null, previous: before, next: catalog.length };
 }
 
 async function syncCatalog(ctx, config, state, reason) {
@@ -584,13 +625,17 @@ async function applySelection(ctx, config, state, importIds, removeIds) {
   }), models: preview.kept };
 
   const before = { ...(entry.options?.config?.providers?.[config.provider] || profile || {}), models: current };
-  const changed = !isDeepStrictEqual(before, nextProfile) || preview.added > 0;
+  let applied = preview;
+  let changed = !isDeepStrictEqual(before, nextProfile) || preview.added > 0;
 
   if (changed) {
     await withHmrRetry(() => ctx.configEditor.edit(entry, (now, inherited) => {
       const providers = { ...(inherited?.providers || {}), ...(now?.providers || {}) };
       const liveProfile = providers[config.provider] || nextProfile;
-      const result = rebuild(Array.isArray(liveProfile.models) ? liveProfile.models : []);
+      // 以 edit 回调里的 live 数据重算，并让外层拿到真实的 added/removed。
+      const liveModels = Array.isArray(liveProfile.models) ? liveProfile.models : [];
+      const result = rebuild(liveModels);
+      applied = { ...result, before: liveModels.length };
       return {
         ...(inherited || {}),
         ...(now || {}),
@@ -608,13 +653,13 @@ async function applySelection(ctx, config, state, importIds, removeIds) {
     changed,
     provider: config.provider,
     template: config.nameTemplate,
-    total: preview.kept.length,
-    added: preview.added,
-    removed: current.length + preview.added - preview.kept.length,
+    total: applied.kept.length,
+    added: applied.added,
+    removed: applied.before + applied.added - applied.kept.length,
   };
   state.lastError = null;
   await writeState(stateFilePath(), state);
-  return { changed, imported: preview.added, removed: current.length + preview.added - preview.kept.length };
+  return { changed, imported: applied.added, removed: applied.before + applied.added - applied.kept.length };
 }
 
 async function statePayload(ctx, state, config) {
@@ -680,17 +725,21 @@ function sendJson(res, status, body) {
 function readJsonBody(req, limit = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let overflowed = false;
     const chunks = [];
     req.on('data', (chunk) => {
+      if (overflowed) return; // 超限后只排空流，不再累积；由上层回错误 JSON。
       size += chunk.length;
       if (size > limit) {
+        overflowed = true;
+        chunks.length = 0;
         reject(new Error('请求体过大'));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (overflowed) return;
       if (chunks.length === 0) return resolve({});
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
@@ -703,16 +752,20 @@ function readJsonBody(req, limit = 64 * 1024) {
 }
 
 function originAllowed(ctx, origin) {
+  // 只信宿主自己声明的 Origin；解析不了、服务不可用一律拒绝（fail-closed）。
+  let expected;
   try {
-    const url = new URL(origin);
-    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '::1') return true;
+    expected = ctx.webServer.getOrigin();
   } catch {
-    /* ignore */
+    return false;
   }
+  if (typeof expected !== 'string' || !expected) return false;
+  if (origin === expected) return true;
+  // 兼容大小写差异的 scheme/host，端口必须完全一致。
   try {
-    return origin === ctx.webServer.getOrigin();
+    return new URL(origin).href === new URL(expected).href;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -730,7 +783,6 @@ export function apply(ctx, rawConfig = {}) {
       }
       const url = new URL(req.url || '/', 'http://localhost');
       const suffix = url.pathname.slice(ROUTE_PREFIX.length) || '/';
-
       if (req.method === 'GET' && suffix === '/state') {
         const state = await readState(statePath);
         sendJson(res, 200, await statePayload(ctx, state, config));
@@ -779,14 +831,17 @@ export function apply(ctx, rawConfig = {}) {
             throw new Error('请先在面板里选择模型组，并填写接口地址与 API Key 引用');
           }
           const catalog = await fetchCatalog(ctx, cfg);
-          state.catalog = catalog;
-          state.fetchedAt = Date.now();
-          state.lastError = null;
+          const applied = applyCatalog(state, catalog, { force: body.force === true });
           await writeState(statePath, state);
-          const sync = body.sync === true ? await syncCatalog(ctx, cfg, state, 'manual') : null;
+          // 目录被骤降保护拦下时不跑同步，避免用残缺目录改写模型组。
+          const sync = applied.applied && body.sync === true
+            ? await syncCatalog(ctx, cfg, state, 'manual')
+            : null;
           return {
             ok: true,
             count: catalog.length,
+            applied: applied.applied,
+            warning: applied.warning,
             sync,
             state: await statePayload(ctx, state, config),
           };
@@ -897,7 +952,7 @@ export function apply(ctx, rawConfig = {}) {
           if (typeof body.nameTemplate === 'string') {
             state.settings.nameTemplate = body.nameTemplate.trim() || DEFAULTS.nameTemplate;
           }
-          for (const key of ['syncMissingModels', 'syncReasoningEfforts', 'syncContextWindow', 'syncOnStartup']) {
+          for (const key of ['syncReasoningEfforts', 'syncContextWindow', 'syncOnStartup']) {
             if (typeof body[key] === 'boolean') state.settings[key] = body[key];
           }
 
@@ -920,10 +975,10 @@ export function apply(ctx, rawConfig = {}) {
           let sync = null;
           if (body.apply === true && cfg.provider) {
             try {
-              state.catalog = await fetchCatalog(ctx, cfg);
-              state.fetchedAt = Date.now();
-              state.lastError = null;
+              const fetched = await fetchCatalog(ctx, cfg);
+              const applied = applyCatalog(state, fetched, { force: body.force === true });
               await writeState(statePath, state);
+              if (!applied.applied) return { ok: true, warning: applied.warning, sync: null, state: await statePayload(ctx, state, config) };
             } catch (error) {
               state.lastError = errorMessage(error);
               await writeState(statePath, state);
@@ -1015,10 +1070,12 @@ export function apply(ctx, rawConfig = {}) {
           }
 
           const catalog = await fetchCatalog(ctx, cfg);
-          state.catalog = catalog;
-          state.fetchedAt = Date.now();
-          state.lastError = null;
+          const applied = applyCatalog(state, catalog);
           await writeState(statePath, state);
+          if (!applied.applied) {
+            // 保留上次目录，用旧目录同步，避免把模型全部标成已下架。
+            console.warn(`[model-catalog] startup: ${applied.warning}`);
+          }
           const sync = await syncCatalog(ctx, cfg, state, 'startup');
           console.log(
             `[model-catalog] startup: ${catalog.length} models, provider ${cfg.provider}, `

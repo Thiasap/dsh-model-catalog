@@ -31,6 +31,7 @@ window.__ModuleLoader__.load({
       'panel.subtitle': '积分倍率、描述与思考强度',
       'panel.models': '个模型',
       'panel.refresh': '刷新目录',
+      'panel.forceRefresh': '强制刷新',
       'panel.refreshing': '刷新中…',
       'panel.sync': '同步到 DSH',
       'panel.syncing': '同步中…',
@@ -142,6 +143,7 @@ window.__ModuleLoader__.load({
       'panel.subtitle': 'Credits, descriptions, and reasoning levels',
       'panel.models': 'models',
       'panel.refresh': 'Refresh catalog',
+      'panel.forceRefresh': 'Force refresh',
       'panel.refreshing': 'Refreshing…',
       'panel.sync': 'Sync to DSH',
       'panel.syncing': 'Syncing…',
@@ -797,7 +799,6 @@ window.__ModuleLoader__.load({
             apiKeyEnv: conn.apiKeyEnv,
             createProvider: conn.createProvider,
             nameTemplate: template,
-            syncMissingModels: data?.settings?.syncMissingModels ?? true,
             syncReasoningEfforts: data?.settings?.syncReasoningEfforts ?? true,
             syncContextWindow: data?.settings?.syncContextWindow ?? true,
             apply: true,
@@ -896,14 +897,19 @@ window.__ModuleLoader__.load({
       const previewModel = models.find((model) => isDefault(model)) || models[0];
       const preview = previewModel ? formatName(template, previewModel) : '—';
 
-      const doRefresh = useCallback(async () => {
+      const doRefresh = useCallback(async (force = false) => {
         setBusy('refresh');
         setFail('');
         setNotice('');
         try {
-          const result = await api('/refresh', { sync: false });
+          const result = await api('/refresh', force ? { sync: false, force: true } : { sync: false });
           setData(result.state);
-          setNotice(`${t('panel.refreshed')} · ${result.count}`);
+          if (result.warning) {
+            // 目录骤降被拦下：保留上次目录，提示用户确认后可强制刷新。
+            setFail(result.warning);
+          } else {
+            setNotice(`${t('panel.refreshed')} · ${result.count}`);
+          }
         } catch (err) {
           setFail(err instanceof Error ? err.message : String(err));
         } finally {
@@ -925,7 +931,6 @@ window.__ModuleLoader__.load({
             ...[...staleIds].filter((id) => !picked.has(id)),
           ];
           const result = await api('/sync', {
-            ...(keep.length > 0 ? { keep } : {}),
             import: importIds,
             remove: removeIds,
           });
@@ -1055,9 +1060,22 @@ window.__ModuleLoader__.load({
               { className: 'mc-hero-actions' },
               h(
                 'button',
-                { type: 'button', className: 'mc-btn', disabled: Boolean(busy) || !(data && data.configured), onClick: doRefresh },
+                { type: 'button', className: 'mc-btn', disabled: Boolean(busy) || !(data && data.configured), onClick: () => doRefresh(false) },
                 busy === 'refresh' ? t('panel.refreshing') : t('panel.refresh'),
               ),
+              // 目录骤降被保护时，提供一次显式确认的强制刷新。
+              data && typeof data.lastError === 'string' && data.lastError.includes('强制刷新')
+                ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'mc-btn',
+                    disabled: Boolean(busy) || !(data && data.configured),
+                    onClick: () => doRefresh(true),
+                  },
+                  t('panel.forceRefresh'),
+                )
+                : null,
               h(
                 'button',
                 { type: 'button', className: 'mc-btn mc-btn-primary', disabled: Boolean(busy) || !(data && data.configured), onClick: doSync },
