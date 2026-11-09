@@ -294,7 +294,7 @@ function sortModelsById(models) {
     .map((item) => item.model);
 }
 
-function buildNextConfig(base, config, state, catalog, forceModelId) {
+function buildNextConfig(base, config, state, catalog) {
   if (!config.provider) throw new Error('还没有选择模型组');
   if (!config.baseURL) throw new Error('还没有填写接口地址');
   if (!config.apiKeyEnv) throw new Error('还没有填写 API Key 引用');
@@ -347,15 +347,8 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
     models.push(merged);
   }
 
-  // 就地更新：以模型组当前 id 为准改写 name 等字段；目录里多出来的模型不自动导入
-  // （面板勾选才导入），forceModelId 是「设为默认模型」的例外。
-  let added = 0;
-  for (const meta of catalog) {
-    if (seen.has(meta.id)) continue;
-    if (meta.id !== forceModelId) continue;
-    models.push(newModel(meta, config, config.nameTemplate));
-    added += 1;
-  }
+  // 就地更新：以模型组当前 id 为准改写 name 等字段；目录里多出来的模型一律不导入，
+  // 只有面板勾选后走 applySelection 才会新增。
 
   // 排序后整体覆盖，本地顺序乱了也会被纠正。
   const ordered = sortModelsById(models);
@@ -374,10 +367,10 @@ function buildNextConfig(base, config, state, catalog, forceModelId) {
       template: config.nameTemplate,
       total: ordered.length,
       matched: seen.size,
-      added,
+      added: 0,
       removed,
       reordered,
-      changed: changed + added + removed + (reordered ? 1 : 0),
+      changed: changed + removed + (reordered ? 1 : 0),
     },
   };
 }
@@ -480,7 +473,7 @@ async function fetchCatalog(ctx, config) {
   return catalog;
 }
 
-async function syncCatalog(ctx, config, state, reason, forceModelId) {
+async function syncCatalog(ctx, config, state, reason) {
   const catalog = Array.isArray(state.catalog) ? state.catalog : [];
   if (catalog.length === 0) throw new Error('还没有模型目录，请先刷新');
   if (!config.provider) throw new Error('还没有选择模型组');
@@ -500,7 +493,7 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
     throw new Error(`模型组 ${config.provider} 不存在；请从已有模型组引入，或新建一个`);
   }
 
-  const preview = buildNextConfig(base, config, state, catalog, forceModelId);
+  const preview = buildNextConfig(base, config, state, catalog);
   // summary.changed 是改动处数，对外 changed 表示是否写入了配置。
   const summary = { ...preview.summary, updates: preview.summary.changed };
   if (isDeepStrictEqual(preview.next, base)) {
@@ -516,7 +509,7 @@ async function syncCatalog(ctx, config, state, reason, forceModelId) {
       ...(current || {}),
       providers: { ...(inherited?.providers || {}), ...(current?.providers || {}) },
     };
-    return buildNextConfig(merged, config, state, catalog, forceModelId).next;
+    return buildNextConfig(merged, config, state, catalog).next;
   }));
 
   state.lastSync = { ...summary, at: Date.now(), reason, changed: true };
@@ -869,10 +862,14 @@ export function apply(ctx, rawConfig = {}) {
             effort = meta.defaultEffort && efforts.includes(meta.defaultEffort) ? meta.defaultEffort : efforts[0] || '';
           }
           const live = providerModels(ctx, cfg).find((model) => model.id === meta.id);
-          const liveEfforts = live && live.reasoningEfforts && typeof live.reasoningEfforts === 'object'
+          if (!live) throw new Error(`模型 ${meta.id} 不在模型组里；请先勾选并同步到 DSH 再设为默认`);
+          const liveEfforts = live.reasoningEfforts && typeof live.reasoningEfforts === 'object'
             ? Object.keys(live.reasoningEfforts)
             : [];
-          if (needsSync) await syncCatalog(ctx, cfg, state, 'select', meta.id);
+          // 设为默认只改选择，不动模型组配置；本地缺这个档位就提示先同步。
+          if (effort && !liveEfforts.includes(effort)) {
+            throw new Error(`模型 ${meta.id} 的本地配置里没有档位 ${effort}；请先点「同步到 DSH」`);
+          }
           await ctx.agentDefaultModel.saveSelection({
             provider: cfg.provider,
             model: meta.id,
