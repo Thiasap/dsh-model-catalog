@@ -17,7 +17,7 @@
   - `reasoningEfforts` ← `reasoning_supported_efforts`
   - 同时同步 `contextWindow`、`maxTokens`、`input`
   - 模型组里的 `models[]` 顺序统一按模型 id 排序（自然序：`4.9` 在 `4.10` 前面），每次同步都会覆盖原有顺序
-- **模型面板**：多选勾选要保留的模型、搜索、按国内/国际/已导入/已下架筛选、设为默认模型、修改名称模板、刷新目录、同步到 DSH。
+- **模型面板**：多选勾选要保留的模型、搜索、按国内/国际/已导入/已下架筛选、设为默认模型、修改名称模板、刷新目录、同步到 DSH。设为默认只改 DSH 的默认选择，不改模型组配置；模型组里没有的模型或档位会提示先同步。
 - **入口**：左侧栏「模型目录」图标；以及「设置 → 模型目录」。
 
 ## 安装
@@ -35,7 +35,7 @@
 dsh plugin --profile <profile> add github:Thiasap/dsh-model-catalog
 
 # 或装指定版本的 Release 包
-dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.2.1/dsh-model-catalog-1.2.1.tgz
+dsh plugin --profile <profile> add https://github.com/Thiasap/dsh-model-catalog/releases/download/v1.2.2/dsh-model-catalog-1.2.2.tgz
 
 # 本地目录
 dsh plugin --profile <profile> add /path/to/dsh-model-catalog

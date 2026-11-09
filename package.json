@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-catalog",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": false,
   "type": "module",
   "description": "Model catalog panel for DSH: credits, descriptions, reasoning efforts, and startup sync into a selected model group.",
